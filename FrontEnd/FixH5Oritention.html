@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+
+ 
+<script src="js/exif.js"></script>
+
+<script type="text/javascript">  
+
+        function selectDeviceImg(){
+            console.log('selectDeviceImg');
+            if (window.webkit) { // iOS
+                window.webkit.messageHandlers.Photo.postMessage(null);
+            } else { // Android and others
+                $("#file_head").trigger("click");
+            }
+        }
+
+
+        // 这里是 iOS调用js的方法, 返回选中的base64文件信息
+        function setImageWithOcData(arguments) {
+            var base64DataFromOC = arguments['imageBase64'];
+            var imgPathFromOC = arguments['imgPath'];
+            var imgSizeFromOC = arguments['imgSize'] / 1024;
+            
+            // 判断文件大小
+            if (imgSizeFromOC > 1000*3) {
+                toastMsg('选择文件不能大于2M');
+            } else {
+                $("#file_select").val(imgPathFromOC);
+                $("#file_head").attr("src", base64DataFromOC);
+                $("#preview").attr("src", base64DataFromOC);
+                showThumbnailImage();
+            }
+        }
+
+        function showThumbnailImage() {
+            var preview = document.getElementById("preview");
+            preview.style.width = "63px";
+            preview.style.height = "63px";
+            preview.style.display = "block"
+        }
+
+        var selectImgVal = "";
+        function setImagePreview() {
+
+            var file_head = document.getElementById("file_head");
+            var picture = file_head.value;
+
+            console.log(picture);
+            if (picture == '') {
+                // file_head.value = preImgVal;
+                // $("#file_head").val(preImgVal); 
+                return false;
+            }
+
+            if (!picture.match(/.jpg|.jpeg|.gif|.png|.bmp/i)) {
+                toastMsg("您上传的图片格式不正确，请重新选择！");
+                return false; 
+            }
+
+            var fileSize = file_head.files[0].size / 1024
+            console.log(fileSize);
+            if(fileSize > 1000 * 2.5){
+                toastMsg("选择文件不能大于2M");
+                file_head.val = '';
+                return false;
+            }
+
+            selectImgVal = file_head.value.substring(file_head.value.lastIndexOf("\\")+1); 
+            $("#file_select").val(selectImgVal);
+          
+            var preImgVal = $("#file_head").get(0).files
+
+            // 处理图片旋转的问题
+            var imageObj = document.getElementById("file_head")
+            var imageFile = imageObj.files[0];
+            EXIF.getData(imageFile, function() {
+                var allTags = EXIF.getAllTags(this);
+                var imgOrientation = allTags.Orientation;
+                console.log(imgOrientation);
+                adjustPhotoOritention(imgOrientation); 
+            }); 
+
+            previewThumbnail();
+            
+            return  true;
+        }
+
+        function previewThumbnail() {
+            var preview, img_txt, localImag;
+            if (preview = document.getElementById("preview"), file_head.files && file_head.files[0]) preview.style.display = "block",  
+                preview.style.width = "63px",  
+                preview.style.height = "63px",  
+                preview.src = window.navigator.userAgent.indexOf("Chrome") >= 1 || window.navigator.userAgent.indexOf("Safari") >= 1 ? window.webkitURL.createObjectURL(file_head.files[0]) : window.URL.createObjectURL(file_head.files[0]);  
+            else {  
+                file_head.select(),  
+                file_head.blur(),  
+                img_txt = document.selection.createRange().text,  
+                localImag = document.getElementById("localImag"),  
+                localImag.style.width = "63px",  
+                localImag.style.height = "63px";  
+                try {  
+                    localImag.style.filter = "progid:DXImageTransform.Microsoft.AlphaImageLoader(sizingMethod=scale)",  
+                    localImag.filters.item("DXImageTransform.Microsoft.AlphaImageLoader").src = img_txt  
+                } catch(f) {  
+                    toastMsg("您上传的图片格式不正确，请重新选择！");
+                    return false;
+                }  
+                preview.style.display = "none",  
+                document.selection.empty()  
+            }  
+        }
+
+        // 处理拍照后文件旋转问题
+        function adjustPhotoOritention(imgOrientation){
+            
+            var imageObj = document.getElementById("file_head")
+            var imageFile = imageObj.files[0];   
+
+            var oReader = new FileReader();
+        
+            oReader.onload = function(e) {
+                
+                var image = new Image();
+                image.src = e.target.result;
+
+                image.onload = function(){
+                    var expectWidth = this.naturalWidth;
+                    var expectHeight = this.naturalHeight;                    
+                    // if (this.naturalWidth > this.naturalHeight && this.naturalWidth > 800) {
+                    //     expectWidth = 800;
+                    //     expectHeight = expectWidth * this.naturalHeight / this.naturalWidth;
+                    // } else if (this.naturalHeight > this.naturalWidth && this.naturalHeight > 1200) {
+                    //     expectHeight = 1200;
+                    //     expectWidth = expectHeight * this.naturalWidth / this.naturalHeight;
+                    // }
+                    var canvas = document.createElement("canvas");
+                    var ctx = canvas.getContext("2d");
+                    canvas.width = expectWidth;
+                    canvas.height = expectHeight;
+                    ctx.drawImage(this, 0, 0, expectWidth, expectHeight);
+                    var base64 = null;
+
+                    //console.log('旋转处理');
+                    if(imgOrientation >0 && imgOrientation != 1){
+                        switch(imgOrientation){
+                            case 6://需要顺时针（向左）90度旋转
+                                console.log('需要顺时针（向左）90度旋转');
+                                rotateImg(this,'left',canvas);
+                                break;
+                            case 8://需要逆时针（向右）90度旋转
+                                console.log('需要顺时针（向右）90度旋转');
+                                rotateImg(this,'right',canvas);
+                                break;
+                            case 3://需要180度旋转
+                                console.log('需要180度旋转');
+                                rotateImg(this,'right',canvas);//转两次
+                                rotateImg(this,'right',canvas);
+                                break;
+                        }       
+                    }
+
+                    base64 = canvas.toDataURL("image/jpeg", 1.0);
+                    $("#file_head").attr("src", base64);
+                    $("#preview").attr("src", base64);
+                
+                } // end  for img load
+
+            } // end for oReader.onload
+
+            oReader.readAsDataURL(imageFile);
+        }
+
+        
+        //对图片旋转处理 added by lzk
+        function rotateImg(img, direction,canvas) {  
+            //alert(img);
+            //最小与最大旋转方向，图片旋转4次后回到原方向  
+            var min_step = 0;  
+            var max_step = 3;  
+            //var img = document.getElementById(pid);  
+            if (img == null)return;  
+            //img的高度和宽度不能在img元素隐藏后获取，否则会出错  
+            var height = img.height;  
+            var width = img.width;  
+            //var step = img.getAttribute('step');  
+            var step = 2;  
+            if (step == null) {  
+                step = min_step;  
+            }  
+            if (direction == 'right') {  
+                step++;  
+                //旋转到原位置，即超过最大值  
+                step > max_step && (step = min_step);  
+            } else {  
+                step--;  
+                step < min_step && (step = max_step);  
+            }  
+            
+            //旋转角度以弧度值为参数  
+            var degree = step * 90 * Math.PI / 180;  
+            var ctx = canvas.getContext('2d');  
+            switch (step) {  
+                case 0:  
+                    canvas.width = width;  
+                    canvas.height = height;  
+                    ctx.drawImage(img, 0, 0);  
+                    break;  
+                case 1:  
+                    canvas.width = height;  
+                    canvas.height = width;  
+                    ctx.rotate(degree);  
+                    ctx.drawImage(img, 0, -height);  
+                    break;  
+                case 2:  
+                    canvas.width = width;  
+                    canvas.height = height;  
+                    ctx.rotate(degree);  
+                    ctx.drawImage(img, -width, -height);  
+                    break;  
+                case 3:  
+                    canvas.width = height;  
+                    canvas.height = width;  
+                    ctx.rotate(degree);  
+                    ctx.drawImage(img, -width, 0);  
+                    break;  
+                }  
+        }  
+
+        // 上传文件处理
+        // https://www.jianshu.com/p/46e6e03a0d53
+        $("#save-workpoint").on('click', function() {
+
+            // 判断文件是否存在
+            //$('#file_head')[0].files[0]
+            var imageBase64 = $("#file_head").attr("src");
+            if (!imageBase64 || imageBase64.length < 100) {
+                toastMsg('请选择图片！')
+                return;
+            }
+
+            showLoadingLayer('上传中...');
+
+            requestNativeSignature();
+
+        }); 
+
+        function notifySignature(){ 
+            sendUpload();
+        } 
+
+        function sendUpload() {
+            
+            var imageBase64 = $("#file_head").attr("src");
+            var fd = new FormData();
+            fd.append("projectId", projectId);
+            fd.append("imageBase64", imageBase64);
+            if(pageMode && pageMode == 'update'){
+                fd.append("mode", "update");
+            }
+
+            $.ajax({
+                url: urlContext+"/h5/workview/init",
+                type: "post",
+                data: fd,
+                cache: false,
+                processData: false,
+                contentType: false,
+                dataType: "json",
+                headers: _signature,
+                success: function (data) {
+                    console.log(data);
+                    closeLoadingLayer();
+                    if (data.result) {
+                        // var replaceUrl = "workview.html?projectId="+projectId
+                        history.back();
+                    } else {
+                        if (data.msg) {
+                            toastMsg(data.msg);
+                        }
+                    }
+                },
+                error:function(jqXHR, textStatus, errorThrown){
+                    closeLoadingLayer();
+                    toastMsg('操作失败,请重试!');
+                }
+            });
+        }
+
+</script>  
+   
+
+</body>
+</html>
